@@ -1,6 +1,48 @@
+import os
 import subprocess #provide a way to handle and process like child process
 import shlex  #for splittign the command into token. Lexical analysis
 
+def handle_builtin(cmd):
+    parts = cmd.split()
+    
+    if len(parts) == 0:
+        return True
+    
+    command  = parts[0]
+    
+    if command == 'cd':
+        if len(parts) == 1:
+            path = os.path.expanduser("~")
+        else:
+            path = parts[1]
+            
+        try:
+            os.chdir(path)
+        except FileNotFoundError:
+            print(f"No such file or directory: {path}")
+        except NotADirectoryError:
+            print(f"Not a directory: {path}")
+        except PermissionError:
+            print(f"Permission denied: {path}")
+            
+    if command == "clear":
+        os.system("cls" if os.name == "nt" else 'clear')
+        return True
+    
+    if command == "help":
+        print ("""
+Supported built-in commands:
+  cd <path>      Change directory
+  clear.         Clear the screen
+  help.          Show this help message
+  exit.          Quit the Beat 
+  
+  System commands (ls, pwsd, echo, mkdir...) also work normally.   
+""")
+        return True
+    
+    return False
+           
 
 def run_command(cmd):
     try:
@@ -34,6 +76,11 @@ def main():
             if line.lower() == "exit":
                 print("Good Bye!")
                 break
+            
+            if handle_builtin(line):
+                continue
+            
+            run_command(line)
 
             print(f"you typed: {line}")
 
