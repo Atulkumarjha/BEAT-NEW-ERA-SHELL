@@ -143,6 +143,78 @@ def get_prompt():
     cwd = os.getcwd()
     return f"beat:{cwd}> "
 
+
+def run_pipeline(commands):
+    processes = []
+    prev_pipe = None
+    
+    for cmd in commands:
+        parts = shlex.split(cmd)
+        
+        if prev_pipe is None:
+            proc = subprocess.Popen(parts, stdout=subprocess.PIPE, text=True)
+        else:
+            proc = subprocess.Popen(
+                parts,
+                stdin=prev_pipe,
+                stdout=subprocess.PIPE,
+                text=True
+            )
+        prev_pipe = proc.stdout
+        processes.append(proc)
+        
+    output, _ = processes[-1].communicate()
+    if output:
+        print(output, end="")
+        
+        
+def handle_output_redirection(cmd):
+    if ">>" in cmd:
+        parts = cmd.split(">>")
+        filename = parts[1].strip()
+        command = shlex.split(parts[0].strip())
+        
+        with open(filename, "a") as f:
+            result = subprocess.run(command, stdout=f, stderr=subprocess.PIPE, text=True)
+        return True
+    
+    elif ">" in cmd:
+        parts = cmd.split(">")
+        filename = parts[1].strip()
+        command = shlex.split(parts[0].strip())
+        
+        with open(filename, "w") as f:
+            result = subprocess.run(command, srdout=f, stderr=subprocess.PIPE, text=True)
+        return True
+    
+    return False
+
+def handle_input_redirection(cmd):
+    if "<" in cmd:
+        return False
+    
+    parts = cmd.split("<")
+    filename = parts[1].strip()
+    command = shlex.split(parts[0].strip())
+    
+    try:
+        with open(filename, "r") as f:
+            result = subprocess.run(command, stdin=f, text=True)
+    except FileNotFoundError:
+        print(f"No such file: {filename}")
+        
+    return True
+
+
+background_jobs = []
+
+def run_in_background(cmd):
+    parts = shlex.split(cmd)
+    proc = subprocess.Popen(parts)
+    background_jobs.append(proc)
+    print(f"[started backgorund job PID={proc.pid}]")
+    
+    
 def main():
     setup_history()
     setup_autocomplete()
@@ -159,16 +231,26 @@ def main():
                 print("Good Bye!")
                 break
             
+            if handle_input_redirection(line):
+                continue
+            
+            if handle_output_redirection(line):
+                continue
+            
+            if "|" in line:
+                commands = line.split("|")
+                run_pipeline([cmd.strip() for cmd in commands])
+                continue
+            
             if handle_builtin(line):
                 continue
             
             run_command(line)
-
-            if handle_builtin(line):
+            
+            if line.endswith("&"):
+                cmd = line[:-1].strip()
+                run_in_background(cmd)
                 continue
-
-            run_command(line)
-
             
 
         except KeyboardInterrupt:
