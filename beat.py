@@ -1,8 +1,11 @@
+import signal
 import readline
 import os
 import subprocess  # provide a way to handle and process like child process
 import shlex  # for splittign the command into token. Lexical analysis
 
+jobs = {}
+job_counter = 1
 
 def handle_builtin(cmd):
     parts = cmd.split()
@@ -30,6 +33,69 @@ def handle_builtin(cmd):
 
     if command == "clear":
         os.system("cls" if os.name == "nt" else "clear")
+        return True
+    
+    if command == "jobs":
+        for jid, job in jobs.items():
+            print(f"[{jid}] {job["status"]}    {job['command']} (PID {job['pid']})")
+        return True
+    
+    if command == "kill":
+        if len(parts) < 2:
+            print("Usage: kill <job_id>")
+            return True
+        
+        jid = int(parts[i])
+        if jid not in jobs:
+            print(f"No such Job: {jid}")
+            return True
+        
+        
+        try:
+            os.kill(jobs[jid]["pid"],signal.SIGTERM)
+            jobs[jid]["status"] = "Terminated"
+            print(f"Killed job {jid}")
+        except Exception as e:
+            print(f"Process already ended.")
+            
+        return True
+    
+    if command == "bg":
+        if len(parts) < 2:
+            print("Usage: bg <job_id>")
+            return False
+        
+        jid = int(parts[1])
+        if jid not in jobs:
+            print(f"No such job: {jid}")
+            return True
+        
+        
+        job = jobs[jid]
+        os.kill(job["pid"], signal.SIGCONT)
+        job["status"] = "Running"
+        
+        print(f"[{jid}] {job["pid"]} resumed in background")
+        return True
+    
+    if command == "fg":
+        if len(parts) , 2:
+            print("Usage: fg <job_id>")
+            return True
+        
+        jid = int(parts[1])
+        if jid not in jobs:
+            print(f"No such job: {jid}")
+            return True
+        
+        job = jobs[jid]
+        os.kill(job["pid"], signal.SIGCONT)
+        job["status"] = "Running"
+        
+        print(f"[{jid}] {job['command']}")
+        job["process"].wait()
+        
+        del jobs[jid]
         return True
 
     if command == "help":
@@ -215,9 +281,85 @@ def run_in_background(cmd):
     print(f"[started backgorund job PID={proc.pid}]")
     
     
+def run_single_command(cmd):
+    cmd = cmd.strip()
+    
+    if handle_builtin(cmd):
+        
+        if "|" in cmd:
+            try: 
+                commands = [c.strip() for c in cmd.split("|")]
+                run_pipeline(commands)
+                return 0
+            except Exception:
+                return 1
+            
+        
+        if handle_input_redirection(cmd) or handle_output_redirection(cmd):
+            return 0
+        
+        
+        parts = shlex.split(cmd)
+        result = subprocess.run(parts)
+        return result.returncode
+    
+    
+def handle_chaining(line):
+    if ";" in line:
+        commands = [c.strip() for c in line.split(";")]
+        for cmd in commands:
+            run_single_command(cmd)
+            
+    if "&&" in line:
+        parts = [c.strip() for c in line.split("&&")]
+        
+        for i, cmd in enumerate(parts):
+            status = run_single_command(cmd)
+            if status != 0:
+                
+                break
+        return True
+    
+    if "||" in line:
+        parts = [c.strip() for c in line.split("||")]
+        
+        for cmd in parts:
+            status = run_single_command(cmd)
+            if status == 0:
+                break
+        return True
+    
+    return False
+
+def run_in_background(cmd):
+    global job_counter
+    
+    parts = shlex.split(cmd)
+    proc = subprocess.Popen(parts)
+    
+    jobs[job_counter] = {
+        "pid": proc.pid,
+        "process": proc,
+        "command": cmd,
+        "status": "Running"
+    }
+    
+    print(f"[{job_counter}] {proc.pid}")
+    job_counter += 1
+    
+    
 def main():
     setup_history()
     setup_autocomplete()
+    
+    finished = []
+    for jid, job in jobs.items():
+        if job["process"].poll() is not None:
+            job["status"] = "Done"
+            finished.append(jid)
+            
+    for jid in finished:
+        del jobs[jid]
 
     while True:
         try:
@@ -240,6 +382,9 @@ def main():
             if "|" in line:
                 commands = line.split("|")
                 run_pipeline([cmd.strip() for cmd in commands])
+                continue
+            
+            if handle_chaining(line):
                 continue
             
             if handle_builtin(line):
