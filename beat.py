@@ -4,6 +4,18 @@ import os
 import subprocess  # provide a way to handle and process like child process
 import shlex  # for splittign the command into token. Lexical analysis
 
+RESET = "\033[0m"
+BOLD = "\033[1m"
+
+RED = "\033[31m"
+GREEN = "\033[32m"
+YELLOW = "\033[33m"
+BLUE = "\033[34m"
+MAGENTA = "\033[35m" 
+CYAN = "\033[36m"
+WHITE = "\033[37m"
+
+
 jobs = {}
 job_counter = 1
 
@@ -79,7 +91,7 @@ def handle_builtin(cmd):
         return True
     
     if command == "fg":
-        if len(parts) , 2:
+        if len(parts) < 2:
             print("Usage: fg <job_id>")
             return True
         
@@ -207,8 +219,21 @@ def expand_variables(cmd):
 
 def get_prompt():
     cwd = os.getcwd()
-    return f"beat:{cwd}> "
+    home = os.path.expanduser("~")
+    
+    
+    if cwd.startswith(home):
+        cwd_display = "~" + cwd[len(home):]
+    else:
+        cwd_display = cwd
+        
+        user = os.getenv("USER")
 
+    return (
+        f"{MAGENTA}{user}{RESET}"
+        f"{GREEN}beat{RESET}"
+        f"{CYAN}{cwd_display}{RESET} $ "
+    )
 
 def run_pipeline(commands):
     processes = []
