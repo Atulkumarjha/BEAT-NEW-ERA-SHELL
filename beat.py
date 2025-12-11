@@ -124,47 +124,6 @@ Supported built-in commands:
 """
         )
         return True
-
-    return False
-
-def handle_builtin(cmd):
-    parts = cmd.split()
-    
-    if len(parts) == 0:
-        return True
-    
-    command  = parts[0]
-    
-    if command == 'cd':
-        if len(parts) == 1:
-            path = os.path.expanduser("~")
-        else:
-            path = parts[1]
-            
-        try:
-            os.chdir(path)
-        except FileNotFoundError:
-            print(f"No such file or directory: {path}")
-        except NotADirectoryError:
-            print(f"Not a directory: {path}")
-        except PermissionError:
-            print(f"Permission denied: {path}")
-            
-    if command == "clear":
-        os.system("cls" if os.name == "nt" else 'clear')
-        return True
-    
-    if command == "help":
-        print ("""
-Supported built-in commands:
-  cd <path>      Change directory
-  clear.         Clear the screen
-  help.          Show this help message
-  exit.          Quit the Beat 
-  
-  System commands (ls, pwsd, echo, mkdir...) also work normally.   
-""")
-        return True
     
     if command == "which":
         if len(parts) < 2:
@@ -177,7 +136,7 @@ Supported built-in commands:
         else:
             print(f"{parts[1]} not found")
         return True
-    
+
     return False
                
                
