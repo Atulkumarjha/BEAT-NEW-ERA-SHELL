@@ -1,6 +1,7 @@
 import signal
 import readline
 import os
+import sys
 import subprocess  # provide a way to handle and process like child process
 import shlex  # for splittign the command into token. Lexical analysis
 
@@ -123,50 +124,21 @@ Supported built-in commands:
 """
         )
         return True
-
-    return False
-
-def handle_builtin(cmd):
-    parts = cmd.split()
     
-    if len(parts) == 0:
-        return True
-    
-    command  = parts[0]
-    
-    if command == 'cd':
-        if len(parts) == 1:
-            path = os.path.expanduser("~")
+    if command == "which":
+        if len(parts) < 2:
+            print("Usage: which <command>")
+            return True
+        
+        resolved = resolve_command(parts[1])
+        if resolved:
+            print(resolved)
         else:
-            path = parts[1]
-            
-        try:
-            os.chdir(path)
-        except FileNotFoundError:
-            print(f"No such file or directory: {path}")
-        except NotADirectoryError:
-            print(f"Not a directory: {path}")
-        except PermissionError:
-            print(f"Permission denied: {path}")
-            
-    if command == "clear":
-        os.system("cls" if os.name == "nt" else 'clear')
+            print(f"{parts[1]} not found")
         return True
-    
-    if command == "help":
-        print ("""
-Supported built-in commands:
-  cd <path>      Change directory
-  clear.         Clear the screen
-  help.          Show this help message
-  exit.          Quit the Beat 
-  
-  System commands (ls, pwsd, echo, mkdir...) also work normally.   
-""")
-        return True
-    
+
     return False
-           
+
 
 def run_command(cmd):
     try:
@@ -299,34 +271,37 @@ def handle_input_redirection(cmd):
 
 background_jobs = []
 
-def run_in_background(cmd):
-    parts = shlex.split(cmd)
-    proc = subprocess.Popen(parts)
-    background_jobs.append(proc)
-    print(f"[started backgorund job PID={proc.pid}]")
-    
-    
 def run_single_command(cmd):
     cmd = cmd.strip()
     
     if handle_builtin(cmd):
+        return 0
+    
+    if "|" in cmd:
+        commands = [c.strip() for c in cmd.split("|")]
+        run_pipeline(commands)
+        return 0
+    
+    if handle_input_redirection(cmd) or handle_output_redirection(cmd):
+        return 0
+    
+    if cmd.endswith("&"):
+        run_in_background(cmd[:-1].strip())
+        return 0
+    
+    parts = shlex.split(cmd)
+    command_name = parts[0]
+    
+    program = resolve_command(command_name)
+    if not program:
+        print(f"beat: command not found: {command_name}")
+        return 1
+    
+    parts[0] = program
+    
+    result = subprocess.run(parts)
+    return result.returncode
         
-        if "|" in cmd:
-            try: 
-                commands = [c.strip() for c in cmd.split("|")]
-                run_pipeline(commands)
-                return 0
-            except Exception:
-                return 1
-            
-        
-        if handle_input_redirection(cmd) or handle_output_redirection(cmd):
-            return 0
-        
-        
-        parts = shlex.split(cmd)
-        result = subprocess.run(parts)
-        return result.returncode
     
     
 def handle_chaining(line):
@@ -430,7 +405,22 @@ def trigger_reverse_search():
 def setup_history_search():
     readline.parse_and_bind('"\\C-r": "reverse-search"')
     readline.set_pre_input_hook(trigger_reverse_search)
+
+
+def resolve_command(cmd):
+    if "/" in cmd:
+        return cmd if os.path.isfile(cmd) and os.access(cmd, os.X_OK) else None
     
+    path_dirs = os.getenv("PATH", "").split(":")
+    
+    for directory in path_dirs:
+        full_path = os.path.join(directory, cmd)
+        if os.path.isfile(full_path) and os.access(full_path, os.X_OK):
+            return full_path
+        
+    return None
+
+
 def main():
     setup_history()
     setup_autocomplete()
