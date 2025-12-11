@@ -57,7 +57,7 @@ def handle_builtin(cmd):
             print("Usage: kill <job_id>")
             return True
         
-        jid = int(parts[i])
+        jid = int(parts[1])
         if jid not in jobs:
             print(f"No such Job: {jid}")
             return True
@@ -373,9 +373,68 @@ def run_in_background(cmd):
     job_counter += 1
     
     
+def setup_readline():
+    readline.parse_and_bind("tab: complete")
+    readline.parse_and_bind('"\\C-r": reverse-search-history')
+    
+    
+class ReverseSearch:
+    def __init__(self):
+        self.search_term = ""
+        self.history_index = readline.get_current_history_length()
+        
+    def activate(self):
+        print("\n(reverse-i-search)`':", end="", flush=True)
+        self.search_term = ""
+        self.history_index = readline.get_current_history_length() - 1
+        
+        while True:
+            ch = sys.stdin.read(1)
+            
+            if ch == "\n":
+                print()
+                return readline.get_history_item(self.history_index + 1)
+            
+            if ch == "\x7f":
+                if self.search_term:
+                    self.search_term = self.search_term[:1]
+                    
+            elif ch == "\x1b":
+                print()
+                return ""
+            
+            else:
+                self.search_term += ch
+                
+            self.history_index = self.find_match(self.search_term)
+            
+            
+            match = readline.get_history_item(self.history_index + 1)
+            print(f"\r(reverse-i-search)`{self.search_term}`: {match}", end="", flush=True)
+            
+    def find_match(self, term):
+        for i in range(readline.get_current_history_length() -1, -1, -1):
+            item = readline.get_history_item(i + 1)
+            if term in item:
+                return i 
+        return -1
+    
+    
+def trigger_reverse_search():
+    search = ReverseSearch()
+    result = search.activate()
+    if result:
+        readline.insert_text(result)
+        readline.redisplay()
+        
+def setup_history_search():
+    readline.parse_and_bind('"\\C-r": "reverse-search"')
+    readline.set_pre_input_hook(trigger_reverse_search)
+    
 def main():
     setup_history()
     setup_autocomplete()
+    setup_history_search()
     
     finished = []
     for jid, job in jobs.items():
