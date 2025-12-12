@@ -76,7 +76,7 @@ def handle_builtin(cmd):
     if command == "bg":
         if len(parts) < 2:
             print("Usage: bg <job_id>")
-            return False
+            return True
         
         jid = int(parts[1])
         if jid not in jobs:
@@ -116,11 +116,22 @@ def handle_builtin(cmd):
             """
 Supported built-in commands:
   cd <path>      Change directory
-  clear.         Clear the screen
-  help.          Show this help message
-  exit.          Quit the Beat 
+  clear          Clear the screen
+  help           Show this help message
+  exit           Quit the Beat shell
+  which <cmd>    Show the full path of a command
+  jobs           List background jobs
+  fg <job_id>    Bring a job to foreground
+  bg <job_id>    Resume a job in background
+  kill <job_id>  Terminate a background job
   
-  System commands (ls, pwsd, echo, mkdir...) also work normally.   
+Features:
+  - Pipes: cmd1 | cmd2 | cmd3
+  - Redirection: cmd > file, cmd >> file, cmd < file
+  - Background jobs: cmd &
+  - Chaining: cmd1; cmd2 (sequential), cmd1 && cmd2 (AND), cmd1 || cmd2 (OR)
+  - Tab completion and command history
+  - Ctrl+R for reverse history search
 """
         )
         return True
@@ -176,7 +187,10 @@ def setup_history():
 
 
 def completer(text, state):
-    options = [f for f in os.listdir(",") if f.startswith(text)]
+    try:
+        options = [f for f in os.listdir(".") if f.startswith(text)]
+    except (PermissionError, FileNotFoundError):
+        options = []
 
     if state < len(options):
         return options[state]
@@ -248,13 +262,13 @@ def handle_output_redirection(cmd):
         command = shlex.split(parts[0].strip())
         
         with open(filename, "w") as f:
-            result = subprocess.run(command, srdout=f, stderr=subprocess.PIPE, text=True)
+            result = subprocess.run(command, stdout=f, stderr=subprocess.PIPE, text=True)
         return True
     
     return False
 
 def handle_input_redirection(cmd):
-    if "<" in cmd:
+    if "<" not in cmd:
         return False
     
     parts = cmd.split("<")
@@ -425,18 +439,20 @@ def main():
     setup_history()
     setup_autocomplete()
     setup_history_search()
-    
-    finished = []
-    for jid, job in jobs.items():
-        if job["process"].poll() is not None:
-            job["status"] = "Done"
-            finished.append(jid)
-            
-    for jid in finished:
-        del jobs[jid]
 
     while True:
         try:
+            # Clean up finished background jobs
+            finished = []
+            for jid, job in list(jobs.items()):
+                if job["process"].poll() is not None:
+                    job["status"] = "Done"
+                    finished.append(jid)
+            
+            for jid in finished:
+                print(f"[{jid}] Done    {jobs[jid]['command']}")
+                del jobs[jid]
+            
             line = input(get_prompt()).strip()
             line = expand_variables(line)
             
